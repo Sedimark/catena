@@ -1,0 +1,1 @@
+from .offerings_retrieval import app
