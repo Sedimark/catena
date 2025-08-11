@@ -1,45 +1,67 @@
 import json
+from typing import List, Dict, Any
+
 import redis
 import requests
-from config import DLT_HOST
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-def fetch_and_store_nodes(redis_config):
-    """
-    Fetches node identities from DLT_HOST and their info, stores in Redis.
-    """
-    redis_client = redis.Redis(host=redis_config['host'], port=redis_config['port'], db=redis_config['db'], decode_responses=True)
-    identities_url = f"http://{DLT_HOST}:{DLT_PORT}/api/identities"
+from config import DLT_BASE_URL, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_NODES_KEY
+from utils.redis_store import get_kv_client
+
+
+def _get_redis_client(host: str, port: int, db: int):
+    return get_kv_client(host, port, db)
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8), reraise=True)
+def _fetch_nodes_from_dlt() -> List[Dict[str, Any]]:
+    url = f"{DLT_BASE_URL}/nodes"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    nodes = resp.json()
+    # Normalize to list of {id, address}
+    normalized: List[Dict[str, Any]] = []
+    for n in nodes:
+        node_id = n.get("id") or n.get("nodeId") or n.get("did")
+        address = n.get("address") or n.get("url") or n.get("endpoint")
+        if node_id and address:
+            normalized.append({"id": node_id, "address": address})
+    return normalized
+
+
+def seed_placeholder_nodes(client: redis.Redis, key: str) -> List[Dict[str, Any]]:
+    placeholder = [
+        {"id": "node-1", "address": "http://localhost:3030"},
+        {"id": "node-2", "address": "http://localhost:3031"},
+        {"id": "node-3", "address": "http://localhost:3032"},
+    ]
+    client.set(key, json.dumps(placeholder))
+    return placeholder
+
+
+def fetch_and_store_nodes(redis_config: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
+    if redis_config is None:
+        redis_config = {"host": REDIS_HOST, "port": REDIS_PORT, "db": REDIS_DB, "key": REDIS_NODES_KEY}
+    client = _get_redis_client(redis_config["host"], redis_config["port"], redis_config["db"])
     try:
-        resp = requests.get(identities_url)
-        resp.raise_for_status()
-        node_ids = resp.json()
-    except Exception as e:
-        print(f"Failed to fetch identities: {e}")
-        return None
+        nodes = _fetch_nodes_from_dlt()
+        if not nodes:
+            nodes = seed_placeholder_nodes(client, redis_config["key"])
+        else:
+            client.set(redis_config["key"], json.dumps(nodes))
+        return nodes
+    except Exception:
+        return seed_placeholder_nodes(client, redis_config["key"])
 
-    node_info_list = []
-    for node_id in node_ids:
-        dids_url = f"http://{DLT_HOST}:{DLT_PORT}/api/dids?id={node_id}"
-        try:
-            dids_resp = requests.get(dids_url)
-            dids_resp.raise_for_status()
-            node_info = dids_resp.json()
-            node_info_list.append(node_info)
-        except Exception as e:
-            print(f"Failed to fetch info for node {node_id}: {e}")
-            continue
 
-    # Store in Redis as JSON
-    redis_client.set(redis_config['key'], json.dumps(node_info_list))
-    return node_info_list
-
-def get_node_list(redis_config):
-    """
-    Retrieves a list of nodes from Redis. If not present, fetches and stores them first.
-    """
-    redis_client = redis.Redis(host=redis_config['host'], port=redis_config['port'], db=redis_config['db'], decode_responses=True)
-    data = redis_client.get(redis_config['key'])
+def get_node_list(redis_config: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
+    if redis_config is None:
+        redis_config = {"host": REDIS_HOST, "port": REDIS_PORT, "db": REDIS_DB, "key": REDIS_NODES_KEY}
+    client = _get_redis_client(redis_config["host"], redis_config["port"], redis_config["db"])
+    data = client.get(redis_config["key"])
     if data:
-        return json.loads(data)
-    else:
-        return fetch_and_store_nodes(redis_config)
+        try:
+            return json.loads(data)
+        except Exception:
+            pass
+    return fetch_and_store_nodes(redis_config)
