@@ -1,4 +1,5 @@
-from .offering_worker import OfferingWorker
-from .data_processor import DataProcessor
+# Workers subpackage for multithreaded and asynchronous operations
 
-__all__ = ['OfferingWorker', 'DataProcessor']
+from .worker_pool import WorkerPool
+
+__all__ = ['WorkerPool']
