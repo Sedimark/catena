@@ -42,21 +42,29 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                 if description_uri:
                     # Extract base address (remove port and path, add 3030)
                     base_url = description_uri.split(':')[0] + ':' + description_uri.split(':')[1].split('/')[0]
-                    node_url = f"{base_url}:3030/catalogue"
+                    node_url = "http://example.com:3030/catalogue"
+                    # node_url = f"{base_url}:3030/catalogue"
+
+                    # The following block checks if the node already exists in the database
+                    # If it does, it updates the node_url
+                    # If it does not, it adds the node to the database
+                    node_exists = redis_client.get(f"node:{offering_id}")
+                    if node_exists:
+                        logger.info(f"Node {offering_id} already exists in the database")
+                    else:
+                        node_info = {
+                            'id': offering_id,
+                            'address': base_url,
+                            'node_url': node_url,
+                            'owner': offering.get('owner'),
+                            'name': offering.get('name'),
+                            'status': 'healthy'
+                        }
                     
-                    node_info = {
-                        'id': offering_id,
-                        'address': base_url,
-                        'node_url': node_url,
-                        'owner': offering.get('owner'),
-                        'name': offering.get('name'),
-                        'status': 'healthy'
-                    }
-                    
-                    discovered_nodes.append(node_info)
-                    
-                    # Store individual node in Redis
-                    redis_client.hset(f"node:{offering_id}", mapping=node_info)
+                        discovered_nodes.append(node_info)
+                        
+                        # Store individual node in Redis
+                        redis_client.hset(f"node:{offering_id}", mapping=node_info)
                     
             except Exception as e:
                 logger.error(f"Error processing offering {offering_id}: {e}")
