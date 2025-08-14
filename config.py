@@ -1,5 +1,9 @@
 import os
 import logging
+import dotenv
+
+def load_config():
+    dotenv.load_dotenv()
 
 logger = logging.getLogger(__name__)
 
