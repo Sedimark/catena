@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 import logging
 
 from api import app
-from config import HOST_ADDRESS, HOST_PORT, DLT_BASE_URL
+from config import load_config, HOST_ADDRESS, HOST_PORT, DLT_BASE_URL
 from utils.node_monitor.health_checker import NodeHealthChecker
 from utils.workers.worker_pool import WorkerPool
 
@@ -111,6 +111,8 @@ def main():
     Catalogue Co-ordinator entry point.
     """
     logger.info("Starting Catalogue Coordinator")
+    
+    load_config()
     
     # Set up Redis configuration
     redis_config = node_list_setup()
