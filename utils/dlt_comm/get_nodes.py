@@ -51,6 +51,14 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                     if node_exists:
                         logger.info(f"Node {offering_id} already exists in the database")
                     else:
+                        # base_url = description_uri.split(':')[0] + ':' + description_uri.split(':')[1].split('/')[0]
+                        parsed_uri = urllib.parse.urlparse(description_uri)
+                        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+                        if len(base_url.split(":")) > 2:
+                            base_url = base_url.split(":")[0] + ":" + base_url.split(":")[1]
+                        node_url = f"{base_url}:3030/catalogue"
+                        # logger.info(f"Node URL: {node_url}") # debug log
+
                         node_info = {
                             'id': offering_id,
                             'address': base_url,
@@ -59,13 +67,6 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                             'name': offering.get('name'),
                             'status': 'healthy'
                         }
-                    # base_url = description_uri.split(':')[0] + ':' + description_uri.split(':')[1].split('/')[0]
-                    parsed_uri = urllib.parse.urlparse(description_uri)
-                    base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
-                    if len(base_url.split(":")) > 2:
-                        base_url = base_url.split(":")[0] + ":" + base_url.split(":")[1]
-                    node_url = f"{base_url}:3030/catalogue"
-                    # logger.info(f"Node URL: {node_url}") # debug log
                     
                         discovered_nodes.append(node_info)
                         
