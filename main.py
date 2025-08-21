@@ -1,11 +1,12 @@
 import time
 import os
 from multiprocessing import Process
-from typing import Any, Dict, List
+from typing import Any, Dict
 import logging
 
 from api import app
 from config import load_config, HOST_ADDRESS, HOST_PORT, DLT_BASE_URL
+from config import load_config HOST_ADDRESS, HOST_PORT, DLT_BASE_URL, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL
 from utils.node_monitor.health_checker import NodeHealthChecker
 from utils.workers.worker_pool import WorkerPool
 
@@ -33,7 +34,7 @@ def setup_node_monitoring(redis_config: Dict[str, Any]):
     Set up and start node health monitoring.
     """
     logger.info("Setting up node health monitoring")
-    health_checker = NodeHealthChecker(redis_config, grace_period=60)
+    health_checker = NodeHealthChecker(redis_config, grace_period=NODE_GRACE_PERIOD)
     health_checker.start_monitoring()
 
 def setup_worker_pool(redis_config: Dict[str, Any]):
@@ -50,16 +51,21 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     # Submit initial offering processing task
     try:
         from utils import get_offerings_for_processing
-        offerings = get_offerings_for_processing(redis_config)
+        offering_ids, offering_meta = get_offerings_for_processing(redis_config)
         
-        if offerings:
-            logger.info(f"Found {len(offerings)} offerings to process")
+        if offering_meta:
+            logger.info(f"Found {len(offering_meta)} offerings to process")
+            logger.info(f"Offering IDs: {offering_ids}") # debug log
+            logger.info(f"Offering Meta: {offering_meta}") # debug log
             # Filter out already processed offerings
             new_offerings = []
-            for offering in offerings:
-                offering_id = offering.get('name')
+            # Assumes same len() for offerings and offering_meta
+            # TODO: Change get_offerings_for_processing() return type to Dict
+            for offering_idx in range(len(offering_meta)):
+                offering_id = offering_ids[offering_idx]
+                offering_desc = offering_meta[offering_idx]
                 if offering_id and offering_id not in processed_offerings_cache:
-                    new_offerings.append(offering)
+                    new_offerings.append([offering_id, offering_desc])
                     processed_offerings_cache.add(offering_id)
             
             if new_offerings:
@@ -76,18 +82,20 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     # Keep the worker pool running and periodically check for new offerings
     try:
         while True:
-            time.sleep(60)  # Check every minute for new offerings
+            time.sleep(OFFERING_FETCH_INTERVAL)  # Check for new offerings again
             
             try:
                 # Check for new offerings and submit processing tasks
-                offerings = get_offerings_for_processing(redis_config)
-                if offerings:
+                offering_ids, offering_meta = get_offerings_for_processing(redis_config)
+                if offering_meta:
                     # Filter out already processed offerings
                     new_offerings = []
-                    for offering in offerings:
-                        offering_id = offering.get('name')
+                    # Assumes same len() for offerings and offering_meta
+                    for offering_idx in range(len(offering_meta)):
+                        offering_id = offering_ids[offering_idx]
+                        offering_desc = offering_meta[offering_idx]
                         if offering_id and offering_id not in processed_offerings_cache:
-                            new_offerings.append(offering)
+                            new_offerings.append([offering_id, offering_desc])
                             processed_offerings_cache.add(offering_id)
                     
                     if new_offerings:

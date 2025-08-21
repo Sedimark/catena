@@ -74,16 +74,16 @@ def process_offerings():
         
         # Get all offerings from DLT
         from utils import get_offerings_for_processing
-        offerings = get_offerings_for_processing(redis_config)
+        offering_ids, offering_meta = get_offerings_for_processing(redis_config)
         
-        if not offerings:
+        if not offering_meta:
             return jsonify({
                 "status": "error",
                 "message": "No offerings found to process"
             }), 404
         
         # Process all offerings
-        results = offering_processor.process_multiple_offerings(offerings)
+        results = offering_processor.process_multiple_offerings(offering_meta)
         
         # Count successes and failures
         success_count = sum(1 for success in results.values() if success)

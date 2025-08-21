@@ -3,6 +3,7 @@ import logging
 import requests
 import threading
 from typing import Dict, List, Any
+from config import NODE_HEALTH_CHECK_INTERVAL
 from utils.dlt_comm.get_nodes import get_node_list
 from utils.hash_ring.consistent_hash import ConsistentHashRing
 
@@ -18,7 +19,7 @@ class NodeHealthChecker:
         self.grace_period = grace_period  # seconds
         self.node_failures = {}  # Track failure timestamps
         self.hash_ring = ConsistentHashRing(redis_config)
-        self.health_check_interval = 30  # seconds
+        self.health_check_interval = NODE_HEALTH_CHECK_INTERVAL  # seconds
         self.node_timeout = 10  # seconds for health check timeout
         self.node_operation_lock = threading.Lock()  # Prevent race conditions
         

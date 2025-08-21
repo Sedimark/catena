@@ -2,6 +2,7 @@ import json
 import requests
 import logging
 from typing import Dict, List, Any, Optional
+from config import OFFERING_DESC_TIMEOUT, OFFERING_REPLICA_COUNT
 from utils.hash_ring.consistent_hash import ConsistentHashRing
 import redis
 import time
@@ -29,7 +30,7 @@ class OfferingProcessor:
             bool: True if successful, False otherwise
         """
         try:
-            # Step 1: Get the full offering from descriptionUri
+            # Get the full offering from descriptionUri
             description_uri = offering_data.get('descriptionUri')
             if not description_uri:
                 logger.error(f"No descriptionUri found for offering {offering_id}")
@@ -37,17 +38,17 @@ class OfferingProcessor:
             
             # Fetch the full offering JSON-LD
             logger.info(f"Fetching offering from {description_uri}")
-            response = requests.get(description_uri, timeout=30)
+            response = requests.get(description_uri, timeout=OFFERING_DESC_TIMEOUT)
             response.raise_for_status()
             full_offering = response.json()
             
-            # Step 2: Use consistent hashing to determine target nodes (with replication)
-            target_nodes = self.hash_ring.get_nodes_for_key(offering_id, replica_count=2)
+            # Use consistent hashing to determine target nodes (with replication)
+            target_nodes = self.hash_ring.get_nodes_for_key(offering_id, replica_count=OFFERING_REPLICA_COUNT)
             if not target_nodes:
                 logger.error(f"No target nodes found for offering {offering_id}")
                 return False
             
-            # Step 3: Store the offering in all target nodes for replication
+            # Store the offering in all target nodes for replication
             successful_stores = 0
             for target_node in target_nodes:
                 success = self._store_offering_in_node(target_node, full_offering, offering_id)
@@ -55,9 +56,9 @@ class OfferingProcessor:
                     successful_stores += 1
                     # Update Redis to track the assignment
                     self._update_offering_assignment(offering_id, target_node['id'], full_offering)
-                    logger.info(f"Successfully stored offering {offering_id} in node {target_node['id']}") # comment this out
+                    logger.info(f"Successfully stored offering {offering_id} in node {target_node['id']}") # possible redundant logging: might want to comment this out
                 else:
-                    logger.error(f"Failed to store offering {offering_id} in node {target_node['id']}") # comment this out
+                    logger.error(f"Failed to store offering {offering_id} in node {target_node['id']}") # possible redundant logging: might want to comment this out
             
             # Consider it successful if at least one copy is stored
             if successful_stores > 0:

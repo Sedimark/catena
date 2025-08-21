@@ -59,6 +59,11 @@ REDIS_DB = int(os.getenv('REDIS_DB', 0))
 # Worker Pool Configuration
 WORKER_POOL_SIZE = int(os.getenv('WORKER_POOL_SIZE', 10))
 
+# Offering Configuration
+OFFERING_DESC_TIMEOUT = int(os.getenv('OFFERING_DESC_TIMEOUT', 30))
+OFFERING_REPLICA_COUNT = int(os.getenv('OFFERING_REPLICA_COUNT', 2))
+OFFERING_FETCH_INTERVAL = int(os.getenv('OFFERING_FETCH_INTERVAL', 60))
+
 # Node Monitoring Configuration
 NODE_HEALTH_CHECK_INTERVAL = int(os.getenv('NODE_HEALTH_CHECK_INTERVAL', 30))
 NODE_GRACE_PERIOD = int(os.getenv('NODE_GRACE_PERIOD', 60))
