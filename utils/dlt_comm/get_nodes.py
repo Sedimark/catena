@@ -2,6 +2,7 @@ import json
 import redis
 import requests
 import logging
+import urllib.parse
 from typing import Dict, List, Any
 from config import DLT_BASE_URL
 
@@ -41,8 +42,13 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                 description_uri = offering.get('descriptionUri', '')
                 if description_uri:
                     # Extract base address (remove port and path, add 3030)
-                    base_url = description_uri.split(':')[0] + ':' + description_uri.split(':')[1].split('/')[0]
+                    # base_url = description_uri.split(':')[0] + ':' + description_uri.split(':')[1].split('/')[0]
+                    parsed_uri = urllib.parse.urlparse(description_uri)
+                    base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+                    if len(base_url.split(":")) > 2:
+                        base_url = base_url.split(":")[0] + ":" + base_url.split(":")[1]
                     node_url = f"{base_url}:3030/catalogue"
+                    # logger.info(f"Node URL: {node_url}") # debug log
                     
                     node_info = {
                         'id': offering_id,
@@ -85,6 +91,7 @@ def get_node_list(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
     try:
         nodes_data = redis_client.get('all_nodes')
         if nodes_data:
+            logger.info(f"Nodes data: {nodes_data}") # debug log
             return json.loads(nodes_data)
         else:
             # If no nodes in Redis, discover them
@@ -96,7 +103,7 @@ def get_node_list(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
 def get_offerings_for_processing(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Get all offerings from DLT for processing.
-    This function retrieves the basic offering data that will be processed separately.
+    This function retrieves the basic offering metadata that will be processed separately.
     """
     try:
         # Get all offering IDs from DLT
@@ -106,23 +113,23 @@ def get_offerings_for_processing(redis_config: Dict[str, Any]) -> List[Dict[str,
         offerings_data = response.json()
         
         offering_ids = offerings_data.get('addresses', [])
-        offerings = []
+        offerings_meta = []
         
         for offering_id in offering_ids:
             try:
-                # Get offering details
+                # Get offering metadata one by one basis
                 offering_url = f"{DLT_BASE_URL}/offerings/{offering_id}"
                 # logger.info(f"DLT_URL: {DLT_BASE_URL}") # debug log
                 offering_response = requests.get(offering_url)
                 offering_response.raise_for_status()
                 offering = offering_response.json()
-                offerings.append(offering)
+                offerings_meta.append(offering)
                 
             except Exception as e:
                 logger.error(f"Error fetching offering {offering_id}: {e}")
                 continue
         
-        return offerings
+        return [offering_ids, offerings_meta]
         
     except Exception as e:
         logger.error(f"Error getting offerings for processing: {e}")
