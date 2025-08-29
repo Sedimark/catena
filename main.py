@@ -5,8 +5,7 @@ from typing import Any, Dict
 import logging
 
 from api import app
-from config import load_config, HOST_ADDRESS, HOST_PORT, DLT_BASE_URL
-from config import load_config HOST_ADDRESS, HOST_PORT, DLT_BASE_URL, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL
+from config import load_config, HOST_ADDRESS, HOST_PORT, DLT_BASE_URL, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL
 from utils.node_monitor.health_checker import NodeHealthChecker
 from utils.workers.worker_pool import WorkerPool
 
