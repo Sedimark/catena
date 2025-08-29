@@ -13,6 +13,9 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
     Discover nodes by fetching offerings from DLT and extracting node addresses.
     Stores nodes in Redis and returns the list of discovered nodes.
     """
+    # Currently offering ID is used AS UUID (UUID : "node:<offering_id>") while storing node.
+    #  This could lead to redundancy issues when same node has two or more offerings. 
+    #  TODO: Use owner in the future to prevent this 
     redis_client = redis.Redis(
         host=redis_config['host'], 
         port=redis_config['port'], 
@@ -48,7 +51,7 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                     # The following block checks if the node already exists in the database
                     # If it does, it updates the node_url
                     # If it does not, it adds the node to the database
-                    node_exists = redis_client.get(f"node:{offering_id}")
+                    node_exists = redis_client.hgetall(f"node:{offering_id}")
                     if node_exists:
                         logger.info(f"Node {offering_id} already exists in the database")
                     else:
@@ -78,9 +81,18 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
             except Exception as e:
                 logger.error(f"Error processing offering {offering_id}: {e}")
                 continue
+
+        for node in discovered_nodes:
+            redis_client.hset(f"node:{node['id']}", mapping=node)
         
         # Store all nodes list in Redis
-        redis_client.set('all_nodes', json.dumps(discovered_nodes))
+        if redis_client.exists("all_nodes") and redis_client.type("all_nodes") != "set":
+            redis_client.delete("all_nodes")
+
+        node_ids = [node['id'] for node in discovered_nodes]
+
+        if node_ids:
+            redis_client.sadd("all_nodes", *node_ids)
         
         return discovered_nodes
         
