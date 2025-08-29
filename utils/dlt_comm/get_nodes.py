@@ -39,6 +39,7 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                 offering = offering_response.json()
                 
                 # Extract node address from descriptionUri
+
                 description_uri = offering.get('descriptionUri', '')
                 if description_uri:
                     # Extract base address (remove port and path, add 3030)
@@ -72,6 +73,7 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                         
                         # Store individual node in Redis
                         redis_client.hset(f"node:{offering_id}", mapping=node_info)
+                        redis_client.sadd('all_nodes', offering_id)
                     
             except Exception as e:
                 logger.error(f"Error processing offering {offering_id}: {e}")

@@ -17,7 +17,7 @@ class ConsistentHashRing:
         self.virtual_nodes = virtual_nodes
         self.ring = {}
         self.sorted_keys = []
-        self.nodes = []
+        # self.nodes = []
         self._load_from_redis()
     
     def _load_from_redis(self):
@@ -35,10 +35,13 @@ class ConsistentHashRing:
                 ring_state = json.loads(ring_data)
                 self.ring = ring_state.get('ring', {})
                 self.sorted_keys = ring_state.get('sorted_keys', [])
-                self.nodes = ring_state.get('nodes', [])
                 logger.info("Hash ring loaded from Redis")
             else:
                 logger.info("No hash ring found in Redis, starting fresh")
+            
+            node_ids = redis_client.smembers('all_nodes')
+            self.nodes = [redis_client.hgetall(f"node:{node_id}") for node_id in node_ids]
+
         except Exception as e:
             logger.error(f"Error loading hash ring from Redis: {e}")
     
@@ -55,7 +58,6 @@ class ConsistentHashRing:
             ring_state = {
                 'ring': self.ring,
                 'sorted_keys': self.sorted_keys,
-                'nodes': self.nodes
             }
             redis_client.set('hash_ring', json.dumps(ring_state))
         except Exception as e:
@@ -68,6 +70,18 @@ class ConsistentHashRing:
     def add_node(self, node: Dict[str, Any]):
         """Add a node to the hash ring."""
         node_id = node['id']
+
+        redis_client = redis.Redis(
+            host=self.redis_config['host'],
+            port=self.redis_config['port'],
+            db=self.redis_config['db'],
+            decode_responses=True
+        )
+
+        if not redis_client.exists(f"node:{node_id}"):
+            redis_client.hset(f"node:{node_id}", mapping=node)
+            redis_client.sadd("all_nodes", node_id)
+
         if node_id not in [n['id'] for n in self.nodes]:
             self.nodes.append(node)
             
@@ -100,8 +114,20 @@ class ConsistentHashRing:
             
             # Remove from nodes list
             self.nodes = [n for n in self.nodes if n['id'] != node_id]
+
+            redis_client = redis.Redis(
+                host=self.redis_config['host'],
+                port=self.redis_config['port'],
+                db=self.redis_config['db'],
+                decode_responses=True
+            )
+
+            redis_client.srem("all_nodes", node_id)     # remove ID from index
+            redis_client.delete(f"node:{node_id}")
+
             self._save_to_redis()
             logger.info(f"Removed node {node_id} from hash ring")
+
         except Exception as e:
             logger.error(f"Error removing node {node_id} from hash ring: {e}")
             # Try to recover by saving current state
