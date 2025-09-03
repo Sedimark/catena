@@ -3,7 +3,7 @@ import logging
 import requests
 import threading
 from typing import Dict, List, Any
-from config import NODE_HEALTH_CHECK_INTERVAL
+from config import NODE_GRACE_PERIOD, NODE_HEALTH_CHECK_INTERVAL, NODE_TIMEOUT
 from utils.dlt_comm.get_nodes import get_node_list
 from utils.hash_ring.consistent_hash import ConsistentHashRing
 
@@ -14,32 +14,33 @@ class NodeHealthChecker:
     Monitors node health and manages node failures with grace periods.
     """
     
-    def __init__(self, redis_config: Dict[str, Any], grace_period: int = 60):
+    def __init__(self, redis_config: Dict[str, Any], grace_period: int = NODE_GRACE_PERIOD):
         self.redis_config = redis_config
-        self.grace_period = grace_period  # seconds
-        self.node_failures = {}  # Track failure timestamps
+        self.grace_period = grace_period  # in seconds
+        self.node_failures = {}
         self.hash_ring = ConsistentHashRing(redis_config)
-        self.health_check_interval = NODE_HEALTH_CHECK_INTERVAL  # seconds
-        self.node_timeout = 10  # seconds for health check timeout
-        self.node_operation_lock = threading.Lock()  # Prevent race conditions
+        self.health_check_interval = NODE_HEALTH_CHECK_INTERVAL  # in seconds
+        self.node_timeout = NODE_TIMEOUT  # in seconds
+        self.node_operation_lock = threading.Lock()
         
     def check_node_health(self, node_info: Dict[str, Any]) -> bool:
         """
         Check if a specific node is healthy by testing its catalogue endpoint.
         """
+        # Test catalogue endpoint
         try:
-            # Test the catalogue endpoint
             test_url = f"{node_info['node_url']}/test"
             response = requests.get(test_url, timeout=self.node_timeout)
             return response.status_code == 200
         except Exception as e:
-            logger.warning(f"Node health check failed for {node_info.get('id', 'unknown')}: {e}")
+            logger.warning(f"Node health check failed for {node_info.get('owner', 'unknown')}: {e}")
             return False
     
     def get_healthy_nodes(self) -> List[Dict[str, Any]]:
         """
         Get list of currently healthy nodes, considering grace periods.
         """
+        # Get healthy nodes and manage unhealthy ondes, redistribute hash rings
         try:
             all_nodes = get_node_list(self.redis_config)
             if not all_nodes:
@@ -49,45 +50,36 @@ class NodeHealthChecker:
             current_time = time.time()
             
             for node in all_nodes:
-                node_id = node['id']
+                node_id = node['owner']
                 
                 if self.check_node_health(node):
-                    # Node is healthy, clear any failure records
                     if node_id in self.node_failures:
                         del self.node_failures[node_id]
                         logger.info(f"Node {node_id} recovered")
                     
-                    # Update hash ring if node was previously unhealthy
                     if node.get('status') != 'healthy':
                         node['status'] = 'healthy'
                         self.hash_ring.update_node_status(node_id, 'healthy')
                     
                     healthy_nodes.append(node)
                 else:
-                    # Node is down, record failure time
                     if node_id not in self.node_failures:
                         self.node_failures[node_id] = current_time
                         logger.warning(f"Node {node_id} is down, starting grace period")
                     
-                    # Check if grace period has expired
                     failure_time = self.node_failures[node_id]
                     if current_time - failure_time >= self.grace_period:
-                        # Use lock to make operations atomic
                         with self.node_operation_lock:
-                            # Grace period expired, mark as unhealthy
                             if node.get('status') != 'unhealthy':
                                 node['status'] = 'unhealthy'
                                 self.hash_ring.update_node_status(node_id, 'unhealthy')
                                 logger.error(f"Node {node_id} grace period expired, marking as unhealthy")
                             
-                            # Redistribute offerings from this node
                             self.hash_ring.redistribute_offerings(node_id, self.redis_config)
                             
-                            # Remove from hash ring
                             self.hash_ring.remove_node(node_id)
                             logger.info(f"Node {node_id} removed from hash ring and offerings redistributed")
                     else:
-                        # Still in grace period, keep as potentially healthy
                         remaining_grace = self.grace_period - (current_time - failure_time)
                         logger.info(f"Node {node_id} still in grace period ({remaining_grace:.1f}s remaining)")
                         healthy_nodes.append(node)
@@ -104,11 +96,11 @@ class NodeHealthChecker:
         """
         logger.info("Starting health check cycle")
         
+        # Update hash ring with any newly discovered nodes
         try:
             healthy_nodes = self.get_healthy_nodes()
             logger.info(f"Found {len(healthy_nodes)} healthy nodes")
             
-            # Update hash ring with any newly discovered nodes
             for node in healthy_nodes:
                 if node['status'] == 'healthy':
                     self.hash_ring.add_node(node)
@@ -121,7 +113,8 @@ class NodeHealthChecker:
         Start continuous monitoring of nodes.
         """
         logger.info("Starting node health monitoring")
-        
+
+        # Initiate monitoring loop 
         while True:
             try:
                 self.run_health_check_cycle()

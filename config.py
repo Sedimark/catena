@@ -44,6 +44,9 @@ def validate_config():
     if warnings:
         logger.warning(f"Found {len(warnings)} configuration warnings")
 
+# Coordinator Configuration
+SUBPROCESS_HEALTH_CHECK_INTERVAL = int(os.getenv('SUBPROCESS_HEALTH_CHECK_INTERVAL', 5))
+
 # Flask API Configuration
 HOST_ADDRESS = os.getenv('HOST_ADDRESS', '0.0.0.0')
 HOST_PORT = int(os.getenv('HOST_PORT', 5000))

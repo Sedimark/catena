@@ -4,7 +4,6 @@ import logging
 from typing import Dict, List, Any, Optional
 from config import OFFERING_DESC_TIMEOUT, OFFERING_REPLICA_COUNT
 from utils.hash_ring.consistent_hash import ConsistentHashRing
-import redis
 import time
 
 logger = logging.getLogger(__name__)

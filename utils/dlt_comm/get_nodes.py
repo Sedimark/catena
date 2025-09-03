@@ -1,4 +1,3 @@
-import json
 import redis
 import requests
 import logging
@@ -13,9 +12,6 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
     Discover nodes by fetching offerings from DLT and extracting node addresses.
     Stores nodes in Redis and returns the list of discovered nodes.
     """
-    # Currently offering ID is used AS UUID (UUID : "node:<offering_id>") while storing node.
-    #  This could lead to redundancy issues when same node has two or more offerings. 
-    #  TODO: Use owner in the future to prevent this 
     redis_client = redis.Redis(
         host=redis_config['host'], 
         port=redis_config['port'], 
@@ -23,8 +19,9 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
         decode_responses=True
     )
     
+    # Get and parse offeringURIs for catalogue endpoints
     try:
-        # Get all offering IDs from DLT
+        logger.info(f"Getting and parsing offeringURIs for catalogue endpoints")
         offerings_url = f"{DLT_BASE_URL}/offerings"
         response = requests.get(offerings_url)
         response.raise_for_status()
@@ -33,67 +30,53 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
         offering_ids = offerings_data.get('addresses', [])
         discovered_nodes = []
         
+        # Fetch offering metadata and parse descriptionURI for catalogue endpoints
         for offering_id in offering_ids:
             try:
-                # Get offering details
                 offering_url = f"{DLT_BASE_URL}/offerings/{offering_id}"
                 offering_response = requests.get(offering_url)
                 offering_response.raise_for_status()
-                offering = offering_response.json()
+                offering_meta = offering_response.json()
                 
-                # Extract node address from descriptionUri
-
-                description_uri = offering.get('descriptionUri', '')
+                description_uri = offering_meta.get('descriptionUri', '')
+                offering_owner = offering_meta.get('owner', '')
                 if description_uri:
-                    # Extract base address (remove port and path, add 3030)
-                    # node_url = f"{base_url}:3030/catalogue"
-
-                    # The following block checks if the node already exists in the database
-                    # If it does, it updates the node_url
-                    # If it does not, it adds the node to the database
-                    node_exists = redis_client.hgetall(f"node:{offering_id}")
+                    # Check if node already exists in Redis
+                    node_exists = redis_client.hgetall(f"node:{offering_owner}")
                     if node_exists:
-                        logger.info(f"Node {offering_id} already exists in the database")
+                        logger.info(f"Node {offering_owner} already exists in the database")
                     else:
-                        # base_url = description_uri.split(':')[0] + ':' + description_uri.split(':')[1].split('/')[0]
                         parsed_uri = urllib.parse.urlparse(description_uri)
                         base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
                         if len(base_url.split(":")) > 2:
                             base_url = base_url.split(":")[0] + ":" + base_url.split(":")[1]
+                        
+                        # TODO: Add a step for Self Description call to determine unique catalogue endpoints
                         node_url = f"{base_url}:3030/catalogue"
-                        # logger.info(f"Node URL: {node_url}") # debug log
+                        # TODO: Add a health check step for the catalogue endpoint
 
                         node_info = {
-                            'id': offering_id,
                             'address': base_url,
                             'node_url': node_url,
-                            'owner': offering.get('owner'),
-                            'name': offering.get('name'),
+                            'owner': offering_meta.get('owner'),
+                            'name': offering_meta.get('name'),
                             'status': 'healthy'
                         }
                     
                         discovered_nodes.append(node_info)
                         
                         # Store individual node in Redis
-                        redis_client.hset(f"node:{offering_id}", mapping=node_info)
-                        redis_client.sadd('all_nodes', offering_id)
+                        redis_client.hset(f"node:{offering_owner}", mapping=node_info)
+                        redis_client.sadd('all_nodes', offering_owner)
                     
             except Exception as e:
-                logger.error(f"Error processing offering {offering_id}: {e}")
+                logger.error(f"Error fetching and parsing catalogue endpoint information for offering {offering_id}: {e}")
                 continue
-
-        for node in discovered_nodes:
-            redis_client.hset(f"node:{node['id']}", mapping=node)
         
-        # Store all nodes list in Redis
+        # Ensure all_nodes is of type SET
         if redis_client.exists("all_nodes") and redis_client.type("all_nodes") != "set":
             redis_client.delete("all_nodes")
 
-        node_ids = [node['id'] for node in discovered_nodes]
-
-        if node_ids:
-            redis_client.sadd("all_nodes", *node_ids)
-        
         return discovered_nodes
         
     except Exception as e:
@@ -112,24 +95,29 @@ def get_node_list(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
     )
     
     try:
-        nodes_data = redis_client.get('all_nodes')
+        nodes_data = redis_client.smembers('all_nodes')
         if nodes_data:
-            logger.info(f"Nodes data: {nodes_data}") # debug log
-            return json.loads(nodes_data)
+            all_nodes = []
+            for node_id in nodes_data:
+                all_nodes.append(redis_client.hgetall(f"node:{node_id}"))
+
+            return all_nodes
         else:
-            # If no nodes in Redis, discover them
+            logger.info(f"No nodes found in Redis, discovering and storing nodes")
             return discover_and_store_nodes(redis_config)
     except Exception as e:
         logger.error(f"Error retrieving nodes: {e}")
         return []
 
-def get_offerings_for_processing(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def get_offerings_meta_for_processing(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Get all offerings from DLT for processing.
     This function retrieves the basic offering metadata that will be processed separately.
     """
+    faulty_offerings = []
+
+    # Get offering IDs and metadata whenever called
     try:
-        # Get all offering IDs from DLT
         offerings_url = f"{DLT_BASE_URL}/offerings"
         response = requests.get(offerings_url)
         response.raise_for_status()
@@ -140,18 +128,22 @@ def get_offerings_for_processing(redis_config: Dict[str, Any]) -> List[Dict[str,
         
         for offering_id in offering_ids:
             try:
-                # Get offering metadata one by one basis
                 offering_url = f"{DLT_BASE_URL}/offerings/{offering_id}"
-                # logger.info(f"DLT_URL: {DLT_BASE_URL}") # debug log
                 offering_response = requests.get(offering_url)
                 offering_response.raise_for_status()
                 offering = offering_response.json()
                 offerings_meta.append(offering)
                 
             except Exception as e:
-                logger.error(f"Error fetching offering {offering_id}: {e}")
+                logger.error(f"Error fetching offering metadata for {offering_id}: {e}")
+                faulty_offerings.append(offering_id)
                 continue
         
+        if faulty_offerings:
+            for offering_id in faulty_offerings:
+                logger.info(f"Removing faulty offering {offering_id} from offerings for processing")
+                offering_ids.remove(offering_id)
+
         return [offering_ids, offerings_meta]
         
     except Exception as e:
