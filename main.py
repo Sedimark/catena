@@ -5,12 +5,13 @@ from typing import Any, Dict
 import logging
 
 from api import app
-from config import load_config, HOST_ADDRESS, HOST_PORT, DLT_BASE_URL, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL
+from config import load_config, HOST_ADDRESS, HOST_PORT, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL, SUBPROCESS_HEALTH_CHECK_INTERVAL
 from utils.node_monitor.health_checker import NodeHealthChecker
 from utils.workers.worker_pool import WorkerPool
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s')
 logger = logging.getLogger(__name__)
+
 
 def node_list_setup():
     """
@@ -24,9 +25,14 @@ def node_list_setup():
     }
     return redis_config
 
+
 def setup_server():
+    """
+    Set up and start the Flask API server for SPARQL federation.
+    """
     logger.info(f"Starting Flask API server at {HOST_ADDRESS}:{HOST_PORT}")
     app.run(host=HOST_ADDRESS, port=HOST_PORT)
+
 
 def setup_node_monitoring(redis_config: Dict[str, Any]):
     """
@@ -36,6 +42,7 @@ def setup_node_monitoring(redis_config: Dict[str, Any]):
     health_checker = NodeHealthChecker(redis_config, grace_period=NODE_GRACE_PERIOD)
     health_checker.start_monitoring()
 
+
 def setup_worker_pool(redis_config: Dict[str, Any]):
     """
     Set up and start the worker pool.
@@ -44,22 +51,20 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     worker_pool = WorkerPool()
     worker_pool.start()
     
-    # Cache to track processed offerings and prevent reprocessing
     processed_offerings_cache = set()
     
-    # Submit initial offering processing task
+    # Initial offering processing
     try:
-        from utils import get_offerings_for_processing
-        offering_ids, offering_meta = get_offerings_for_processing(redis_config)
-        
+        from utils import get_offerings_meta_for_processing
+        offering_ids, offering_meta = get_offerings_meta_for_processing(redis_config)
+
+        if len(offering_ids) != len(offering_meta):
+            logger.error("Number of offerings IDs and offering meta data do not match")
+            return
+
         if offering_meta:
             logger.info(f"Found {len(offering_meta)} offerings to process")
-            logger.info(f"Offering IDs: {offering_ids}") # debug log
-            logger.info(f"Offering Meta: {offering_meta}") # debug log
-            # Filter out already processed offerings
             new_offerings = []
-            # Assumes same len() for offerings and offering_meta
-            # TODO: Change get_offerings_for_processing() return type to Dict
             for offering_idx in range(len(offering_meta)):
                 offering_id = offering_ids[offering_idx]
                 offering_desc = offering_meta[offering_idx]
@@ -78,18 +83,20 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Error setting up initial offering processing: {e}")
     
-    # Keep the worker pool running and periodically check for new offerings
+    # Periodically check for new offerings
     try:
         while True:
-            time.sleep(OFFERING_FETCH_INTERVAL)  # Check for new offerings again
+            time.sleep(OFFERING_FETCH_INTERVAL)
             
             try:
-                # Check for new offerings and submit processing tasks
-                offering_ids, offering_meta = get_offerings_for_processing(redis_config)
+                offering_ids, offering_meta = get_offerings_meta_for_processing(redis_config)
+
+                if len(offering_ids) != len(offering_meta):
+                    logger.error("Number of offerings IDs and offering meta data do not match")
+                    return
+
                 if offering_meta:
-                    # Filter out already processed offerings
                     new_offerings = []
-                    # Assumes same len() for offerings and offering_meta
                     for offering_idx in range(len(offering_meta)):
                         offering_id = offering_ids[offering_idx]
                         offering_desc = offering_meta[offering_idx]
@@ -103,7 +110,7 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
                     else:
                         logger.debug("No new offerings to process")
                 
-                # Auto-cleanup completed tasks to prevent memory leaks
+                # Auto-cleanup completed tasks
                 worker_pool.auto_cleanup(max_completed_tasks=50)
                         
             except Exception as e:
@@ -112,6 +119,7 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     except KeyboardInterrupt:
         logger.info("Stopping worker pool")
         worker_pool.stop()
+
 
 def main():
     """
@@ -124,25 +132,25 @@ def main():
     # Set up Redis configuration
     redis_config = node_list_setup()
     
-    # Start the API server in a separate process
+    # Start the API server subprocess
     server_process = Process(target=setup_server, name="FlaskAPI")
     server_process.start()
     logger.info("API server process started")
     
-    # Start node monitoring in a separate process
+    # Start node monitoring subprocess
     monitor_process = Process(target=setup_node_monitoring, args=(redis_config,), name="NodeMonitor")
     monitor_process.start()
     logger.info("Node monitoring process started")
     
-    # Start worker pool in a separate process
+    # Start worker pool subprocess
     worker_process = Process(target=setup_worker_pool, args=(redis_config,), name="WorkerPool")
     worker_process.start()
     logger.info("Worker pool process started")
     
-    # Main process keeps all subprocesses alive
+    # Main process
     try:
+        # Check subprocesses' health
         while True:
-            # Check if all processes are still alive
             if not server_process.is_alive():
                 logger.error("API server process died, restarting...")
                 server_process = Process(target=setup_server, name="FlaskAPI")
@@ -161,7 +169,7 @@ def main():
                 worker_process.start()
                 logger.info("Worker pool process restarted")
             
-            time.sleep(5)  # Check every 5 seconds
+            time.sleep(SUBPROCESS_HEALTH_CHECK_INTERVAL)
             
     except KeyboardInterrupt:
         logger.info("Shutting down Catalogue Coordinator...")

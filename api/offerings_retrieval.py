@@ -73,8 +73,8 @@ def process_offerings():
         offering_processor = OfferingProcessor(redis_config)
         
         # Get all offerings from DLT
-        from utils import get_offerings_for_processing
-        offering_ids, offering_meta = get_offerings_for_processing(redis_config)
+        from utils import get_offerings_meta_for_processing
+        offering_ids, offering_meta = get_offerings_meta_for_processing(redis_config)
         
         if not offering_meta:
             return jsonify({
