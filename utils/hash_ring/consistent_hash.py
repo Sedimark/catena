@@ -17,7 +17,6 @@ class ConsistentHashRing:
         self.virtual_nodes = virtual_nodes
         self.ring = {}
         self.sorted_keys = []
-        # self.nodes = []
         self._load_from_redis()
     
     def _load_from_redis(self):
@@ -69,7 +68,7 @@ class ConsistentHashRing:
     
     def add_node(self, node: Dict[str, Any]):
         """Add a node to the hash ring."""
-        node_id = node['id']
+        node_id = node['owner']
 
         redis_client = redis.Redis(
             host=self.redis_config['host'],
@@ -82,7 +81,7 @@ class ConsistentHashRing:
             redis_client.hset(f"node:{node_id}", mapping=node)
             redis_client.sadd("all_nodes", node_id)
 
-        if node_id not in [n['id'] for n in self.nodes]:
+        if node_id not in [n['owner'] for n in self.nodes]:
             self.nodes.append(node)
             
             # Add virtual nodes
@@ -105,15 +104,13 @@ class ConsistentHashRing:
                 hash_value = self._hash(virtual_key)
                 if hash_value in self.ring:
                     del self.ring[hash_value]
-                    # Safely remove from sorted_keys
                     try:
                         self.sorted_keys.remove(hash_value)
                     except ValueError:
-                        # Hash value might not be in sorted_keys (shouldn't happen, but safe)
                         pass
             
             # Remove from nodes list
-            self.nodes = [n for n in self.nodes if n['id'] != node_id]
+            self.nodes = [n for n in self.nodes if n['owner'] != node_id]
 
             redis_client = redis.Redis(
                 host=self.redis_config['host'],
@@ -147,12 +144,12 @@ class ConsistentHashRing:
         for sorted_key in self.sorted_keys:
             if sorted_key >= hash_value:
                 node_id = self.ring[sorted_key]
-                return next((n for n in self.nodes if n['id'] == node_id), None)
+                return next((n for n in self.nodes if n['owner'] == node_id), None)
         
         # Wrap around to the first node
         first_key = self.sorted_keys[0]
         node_id = self.ring[first_key]
-        return next((n for n in self.nodes if n['id'] == node_id), None)
+        return next((n for n in self.nodes if n['owner'] == node_id), None)
     
     def get_nodes_for_key(self, key: str, replica_count: int = 2) -> List[Dict[str, Any]]:
         """Get multiple nodes for replication (primary + replicas)."""
@@ -168,7 +165,7 @@ class ConsistentHashRing:
             if sorted_key >= hash_value:
                 node_id = self.ring[sorted_key]
                 if node_id not in seen_node_ids:
-                    node = next((n for n in self.nodes if n['id'] == node_id), None)
+                    node = next((n for n in self.nodes if n['owner'] == node_id), None)
                     if node:
                         nodes.append(node)
                         seen_node_ids.add(node_id)
@@ -180,7 +177,7 @@ class ConsistentHashRing:
             for sorted_key in self.sorted_keys:
                 node_id = self.ring[sorted_key]
                 if node_id not in seen_node_ids:
-                    node = next((n for n in self.nodes if n['id'] == node_id), None)
+                    node = next((n for n in self.nodes if n['owner'] == node_id), None)
                     if node:
                         nodes.append(node)
                         seen_node_ids.add(node_id)
@@ -223,11 +220,11 @@ class ConsistentHashRing:
                                 )
                                 if response.status_code in [200, 201]:
                                     # Update Redis to reflect new assignment
-                                    redis_client.sadd(f"node_offerings:{node['id']}", offering_id)
+                                    redis_client.sadd(f"node_offerings:{node['owner']}", offering_id)
                                     redis_client.delete(f"offering:{offering_id}")
-                                    logger.info(f"Redistributed offering {offering_id} to node {node['id']}")
+                                    logger.info(f"Redistributed offering {offering_id} to node {node['owner']}")
                             except Exception as e:
-                                logger.error(f"Error redistributing offering {offering_id} to node {node['id']}: {e}")
+                                logger.error(f"Error redistributing offering {offering_id} to node {node['owner']}: {e}")
             
             # Remove failed node's offerings from Redis
             redis_client.delete(f"node_offerings:{failed_node_id}")
@@ -238,7 +235,7 @@ class ConsistentHashRing:
     def update_node_status(self, node_id: str, status: str):
         """Update node status in the hash ring."""
         for node in self.nodes:
-            if node['id'] == node_id:
+            if node['owner'] == node_id:
                 node['status'] = status
                 self._save_to_redis()
                 break

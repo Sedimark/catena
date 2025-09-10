@@ -5,7 +5,7 @@ Data processing utilities for catalogue operations.
 import json
 import logging
 import requests
-from typing import Dict, Any, List
+from typing import Dict, Any
 from rdflib import Graph
 from tenacity import retry, stop_after_attempt, wait_exponential
 
