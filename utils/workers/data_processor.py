@@ -108,7 +108,6 @@ class DataProcessor:
             if field not in listing:
                 return False
         
-        # Check if it's an offering (not a contract)
         offering_types = listing.get('@type', [])
         if isinstance(offering_types, str):
             offering_types = [offering_types]

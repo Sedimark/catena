@@ -75,5 +75,8 @@ NODE_TIMEOUT = int(os.getenv('NODE_TIMEOUT', 10))
 # Hash Ring Configuration
 HASH_RING_VIRTUAL_NODES = int(os.getenv('HASH_RING_VIRTUAL_NODES', 150))
 
+# Baseline Infrastructure Configuration
+BASELINE_INFRA = int(os.getenv('BASELINE_INFRA', 0))
+
 # Validate configuration on import
 validate_config()

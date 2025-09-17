@@ -1,2 +1,7 @@
 # Environment Files and Directories
 .venv/
+./env/.env
+
+# Python bytecodes
+__pycache__/
+*.pyc

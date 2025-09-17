@@ -17,6 +17,7 @@ class OfferingProcessor:
         self.redis_config = redis_config
         self.hash_ring = ConsistentHashRing(redis_config)
     
+    # Fetch and store offerings
     def process_offering(self, offering_id: str, offering_data: Dict[str, Any]) -> bool:
         """
         Process an offering: fetch from descriptionUri and distribute via consistent hashing.
@@ -29,37 +30,31 @@ class OfferingProcessor:
             bool: True if successful, False otherwise
         """
         try:
-            # Get the full offering from descriptionUri
             description_uri = offering_data.get('descriptionUri')
             if not description_uri:
                 logger.error(f"No descriptionUri found for offering {offering_id}")
                 return False
             
-            # Fetch the full offering JSON-LD
             logger.info(f"Fetching offering from {description_uri}")
             response = requests.get(description_uri, timeout=OFFERING_DESC_TIMEOUT)
             response.raise_for_status()
             full_offering = response.json()
             
-            # Use consistent hashing to determine target nodes (with replication)
             target_nodes = self.hash_ring.get_nodes_for_key(offering_id, replica_count=OFFERING_REPLICA_COUNT)
             if not target_nodes:
                 logger.error(f"No target nodes found for offering {offering_id}")
                 return False
             
-            # Store the offering in all target nodes for replication
             successful_stores = 0
             for target_node in target_nodes:
                 success = self._store_offering_in_node(target_node, full_offering, offering_id)
                 if success:
                     successful_stores += 1
-                    # Update Redis to track the assignment
                     self._update_offering_assignment(offering_id, target_node['id'], full_offering)
-                    logger.info(f"Successfully stored offering {offering_id} in node {target_node['id']}") # possible redundant logging: might want to comment this out
+                    logger.info(f"Successfully stored offering {offering_id} in node {target_node['id']}")
                 else:
-                    logger.error(f"Failed to store offering {offering_id} in node {target_node['id']}") # possible redundant logging: might want to comment this out
+                    logger.error(f"Failed to store offering {offering_id} in node {target_node['id']}")
             
-            # Consider it successful if at least one copy is stored
             if successful_stores > 0:
                 logger.info(f"Offering {offering_id} stored in {successful_stores}/{len(target_nodes)} nodes")
                 return True
@@ -84,7 +79,6 @@ class OfferingProcessor:
             bool: True if successful, False otherwise
         """
         try:
-            # POST to node's catalogue manager endpoint
             manager_url = f"{target_node['node_url']}/manager"
             
             response = requests.post(
@@ -119,7 +113,7 @@ class OfferingProcessor:
         
         for attempt in range(max_retries):
             try:
-                import redis # comment this out
+                import redis
                 redis_client = redis.Redis(
                     host=self.redis_config['host'],
                     port=self.redis_config['port'],
@@ -129,31 +123,27 @@ class OfferingProcessor:
                     socket_timeout=5
                 )
                 
-                # Test connection
                 redis_client.ping()
                 
-                # Store the full offering data
                 redis_client.set(f"offering:{offering_id}", json.dumps(offering))
                 
-                # Track which node this offering is assigned to
                 redis_client.sadd(f"node_offerings:{node_id}", offering_id)
                 
-                # Also track offering assignments
                 redis_client.set(f"offering_node:{offering_id}", node_id)
                 
                 logger.debug(f"Updated Redis assignment: offering {offering_id} -> node {node_id}")
-                break  # Success, exit retry loop
+                break
                 
             except redis.ConnectionError as e:
                 logger.error(f"Redis connection error (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
+                    retry_delay *= 2
                 else:
                     logger.error(f"Failed to update Redis after {max_retries} attempts")
             except Exception as e:
                 logger.error(f"Error updating Redis assignment for offering {offering_id}: {e}")
-                break  # Don't retry on non-connection errors
+                break
     
     def process_multiple_offerings(self, offerings: List[Dict[str, Any]]) -> Dict[str, bool]:
         """
@@ -168,7 +158,7 @@ class OfferingProcessor:
         results = {}
         
         for offering_data in offerings: # TODO: implement SHACL segregation of offerings
-            offering_id = offering_data.get('name')  # Using 'name' as offering_id based on your DLT format
+            offering_id = offering_data.get('name')
             if offering_id:
                 success = self.process_offering(offering_id, offering_data)
                 results[offering_id] = success
@@ -186,7 +176,7 @@ class OfferingProcessor:
             Dict with offering status and node assignment, or None if not found
         """
         try:
-            import redis # comment this out
+            import redis
             redis_client = redis.Redis(
                 host=self.redis_config['host'],
                 port=self.redis_config['port'],
@@ -194,12 +184,10 @@ class OfferingProcessor:
                 decode_responses=True
             )
             
-            # Get the node this offering is assigned to
             node_id = redis_client.get(f"offering_node:{offering_id}")
             if not node_id:
                 return None
             
-            # Get the offering data
             offering_data = redis_client.get(f"offering:{offering_id}")
             offering = json.loads(offering_data) if offering_data else None
             

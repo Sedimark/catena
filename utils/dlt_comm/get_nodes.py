@@ -3,7 +3,7 @@ import requests
 import logging
 import urllib.parse
 from typing import Dict, List, Any
-from config import DLT_BASE_URL
+from config import DLT_BASE_URL, BASELINE_INFRA
 
 logger = logging.getLogger(__name__)
 
@@ -31,47 +31,71 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
         discovered_nodes = []
         
         # Fetch offering metadata and parse descriptionURI for catalogue endpoints
-        for offering_id in offering_ids:
-            try:
-                offering_url = f"{DLT_BASE_URL}/offerings/{offering_id}"
-                offering_response = requests.get(offering_url)
-                offering_response.raise_for_status()
-                offering_meta = offering_response.json()
-                
-                description_uri = offering_meta.get('descriptionUri', '')
-                offering_owner = offering_meta.get('owner', '')
-                if description_uri:
-                    # Check if node already exists in Redis
-                    node_exists = redis_client.hgetall(f"node:{offering_owner}")
-                    if node_exists:
-                        logger.info(f"Node {offering_owner} already exists in the database")
-                    else:
-                        parsed_uri = urllib.parse.urlparse(description_uri)
-                        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
-                        if len(base_url.split(":")) > 2:
-                            base_url = base_url.split(":")[0] + ":" + base_url.split(":")[1]
-                        
-                        # TODO: Add a step for Self Description call to determine unique catalogue endpoints
-                        node_url = f"{base_url}:3030/catalogue"
-                        # TODO: Add a health check step for the catalogue endpoint
+        if not BASELINE_INFRA:
+            for offering_id in offering_ids:
+                try:
+                    offering_url = f"{DLT_BASE_URL}/offerings/{offering_id}"
+                    offering_response = requests.get(offering_url)
+                    offering_response.raise_for_status()
+                    offering_meta = offering_response.json()
+                    
+                    description_uri = offering_meta.get('descriptionUri', '')
+                    offering_owner = offering_meta.get('owner', '')
+                    if description_uri:
+                        # Check if node already exists in Redis
+                        node_exists = redis_client.hgetall(f"node:{offering_owner}")
+                        if node_exists:
+                            logger.info(f"Node {offering_owner} already exists in the database")
+                        else:
+                            parsed_uri = urllib.parse.urlparse(description_uri)
+                            base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+                            if len(base_url.split(":")) > 2:
+                                base_url = base_url.split(":")[0] + ":" + base_url.split(":")[1]
+                            
+                            # TODO: Add a step for Self Description call to determine unique catalogue endpoints
+                            node_url = f"{base_url}:3030/catalogue"
+                            # TODO: Add a health check step for the catalogue endpoint
 
-                        node_info = {
-                            'address': base_url,
-                            'node_url': node_url,
-                            'owner': offering_meta.get('owner'),
-                            'name': offering_meta.get('name'),
-                            'status': 'healthy'
-                        }
-                    
-                        discovered_nodes.append(node_info)
+                            node_info = {
+                                'address': base_url,
+                                'node_url': node_url,
+                                'owner': offering_meta.get('owner'),
+                                'name': offering_meta.get('name'),
+                                'status': 'healthy'
+                            }
+                                
+                            discovered_nodes.append(node_info)
+                            
+                            # Store individual node in Redis
+                            redis_client.hset(f"node:{offering_owner}", mapping=node_info)
+                            redis_client.sadd('all_nodes', offering_owner)
                         
-                        # Store individual node in Redis
-                        redis_client.hset(f"node:{offering_owner}", mapping=node_info)
-                        redis_client.sadd('all_nodes', offering_owner)
-                    
-            except Exception as e:
-                logger.error(f"Error fetching and parsing catalogue endpoint information for offering {offering_id}: {e}")
-                continue
+                except Exception as e:
+                    logger.error(f"Error fetching and parsing catalogue endpoint information for offering {offering_id}: {e}")
+                    continue
+
+        # Baseline Infrastructure Implementation
+        else:
+            import json
+
+            with open('catalogue_list.json', 'r') as f:
+                nodes_data = json.load(f)
+
+            node_info = {}
+
+            for node_name, node_data in nodes_data.items():
+                node_info[node_name] = {
+                    'address': node_data['base_url'],
+                    'node_url': node_data['catalogue_url'],
+                    'owner': node_data['id'],
+                    'name': node_name,
+                    'status': 'healthy'
+                }
+            
+                discovered_nodes.append(node_info)
+                            
+                redis_client.hset(f"node:{offering_owner}", mapping=node_info)
+                redis_client.sadd('all_nodes', offering_owner) 
         
         # Ensure all_nodes is of type SET
         if redis_client.exists("all_nodes") and redis_client.type("all_nodes") != "set":

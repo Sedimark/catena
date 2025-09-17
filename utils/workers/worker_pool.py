@@ -253,7 +253,7 @@ class WorkerPool:
         task_ids = []
         
         for offering_data in offerings:
-            offering_id = offering_data[0]  # Using 'name' as offering_id
+            offering_id = offering_data[0]
             if offering_id:
                 task_id = self.submit_offering_processing_task(offering_id, offering_data[1], redis_config)
                 task_ids.append(task_id)

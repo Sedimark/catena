@@ -29,7 +29,7 @@ class NodeHealthChecker:
         """
         # Test catalogue endpoint
         try:
-            test_url = f"{node_info['node_url']}/test"
+            test_url = f"{node_info['node_url']}/health"
             response = requests.get(test_url, timeout=self.node_timeout)
             return response.status_code == 200
         except Exception as e:

@@ -127,6 +127,7 @@ class ConsistentHashRing:
 
         except Exception as e:
             logger.error(f"Error removing node {node_id} from hash ring: {e}")
+
             # Try to recover by saving current state
             try:
                 self._save_to_redis()
@@ -172,7 +173,6 @@ class ConsistentHashRing:
                         if len(nodes) >= replica_count:
                             break
         
-        # If we need more replicas, wrap around
         if len(nodes) < replica_count:
             for sorted_key in self.sorted_keys:
                 node_id = self.ring[sorted_key]
@@ -199,20 +199,17 @@ class ConsistentHashRing:
             # Get offerings assigned to the failed node
             failed_offerings = redis_client.smembers(f"node_offerings:{failed_node_id}")
             
+            # Get offering data and store again
             for offering_id in failed_offerings:
-                # Get offering data
                 offering_data = redis_client.get(f"offering:{offering_id}")
                 if offering_data:
                     offering = json.loads(offering_data)
                     
-                    # Find new nodes for this offering
                     new_nodes = self.get_nodes_for_key(offering_id, replica_count=2)
                     
                     if new_nodes:
-                        # Store offering in new nodes
                         for node in new_nodes:
                             try:
-                                # POST to node's catalogue manager
                                 response = requests.post(
                                     f"{node['node_url']}/manager",
                                     json=offering,
