@@ -28,9 +28,11 @@ The coordinator consists of several key components organized in a clean, modular
 ├── examples
 │   ├── catalogue_list.json
 │   └── example.env
+├── LICENSE
 ├── main.py
 ├── README.md
 ├── requirements.txt
+├── start.sh
 └── utils
     ├── __init__.py
     ├── dlt_comm
