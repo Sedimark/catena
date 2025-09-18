@@ -1,6 +1,6 @@
-# Catalogue Coordinator
+# Catena
 
-A distributed catalogue coordination system that retrieves offerings from DLT-Booth, distributes data across catalogue nodes using consistent hashing, and provides federated SPARQL querying capabilities.
+Catena is a distributed catalogue coordination system that retrieves offerings from DLT-Booth, distributes data across catalogue nodes using consistent hashing, and provides federated SPARQL querying capabilities.
 
 ## Architecture
 
