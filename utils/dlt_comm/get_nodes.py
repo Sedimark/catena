@@ -84,7 +84,8 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
             node_info = {}
 
             for node_name, node_data in nodes_data.items():
-                node_info[node_name] = {
+                offering_owner = node_data['id']
+                node_info = {
                     'address': node_data['base_url'],
                     'node_url': node_data['catalogue_url'],
                     'owner': node_data['id'],
