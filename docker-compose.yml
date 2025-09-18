@@ -1,0 +1,81 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: catalogue-coordinator-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - /srv/pipelines/dev/vols/redis:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  
+  catalogue-coordinator:
+    build: .
+    image: catalogue-coordinator:latest
+    container_name: catalogue-coordinator
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      redis:
+        condition: service_healthy
+      dlt-booth:
+        condition: service_healthy
+      catalogue-server:
+        condition: service_healthy
+
+  dlt-booth:
+    image: ghcr.io/sedimark/dlt-booth:dev
+    container_name: dlt-booth-dev
+    environment:
+      RUST_LOG: ${DLT_RUST_LOG}
+      RUST_BACKTRACE: ${DLT_RUST_BACKTRACE}
+      HOST_ADDRESS: ${DLT_HOST_ADDRESS}
+      HOST_PORT: ${DLT_HOST_PORT}
+      NODE_URL: ${DLT_NODE_URL}
+      FAUCET_API_ENDPOINT: ${DLT_FAUCET_API_ENDPOINT}
+      RPC_PROVIDER: ${DLT_RPC_PROVIDER}
+      CHAIN_ID: ${DLT_CHAIN_ID}
+      ISSUER_URL: ${DLT_ISSUER_URL}
+      KEY_STORAGE_STRONGHOLD_SNAPSHOT_PATH: ${DLT_KEY_STORAGE_STRONGHOLD_SNAPSHOT_PATH}
+      KEY_STORAGE_STRONGHOLD_PASSWORD: ${DLT_KEY_STORAGE_STRONGHOLD_PASSWORD}
+      WALLET_STRONGHOLD_SNAPSHOT_PATH: ${DLT_WALLET_STRONGHOLD_SNAPSHOT_PATH}
+      WALLET_STRONGHOLD_PASSWORD: ${DLT_WALLET_STRONGHOLD_PASSWORD}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_MAX_POOL_SIZE: ${DB_MAX_POOL_SIZE}
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c \"curl -f http://localhost:8085/api/health || exit 1\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres-dev:
+       condition: service_healthy 
+
+    
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /srv/pipelines/dev/vols/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
