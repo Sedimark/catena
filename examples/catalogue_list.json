@@ -1,0 +1,18 @@
+{
+    "node_1": {
+      "base_url": "http://example.com",
+      "catalogue_url": "http://example.com:8080/catalogue",
+      "id": "0x46c7edf18239341f2b8687f2d26362c0"
+    },
+    "node_2": {
+      "base_url": "https://example.com",
+      "catalogue_url": "https://example.com:8081/catalogue",
+      "id": "0xf7227d0d443c90102459796e33d9f1e0"
+    },
+    "node_3": {
+      "base_url": "https://example.com",
+      "catalogue_url": "https://example.com:8082/catalogue",
+      "id": "0xd08c7f579a405676ca03029af0fecb28"
+    }
+  }
+  
