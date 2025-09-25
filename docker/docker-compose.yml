@@ -15,7 +15,9 @@ services:
       retries: 3
   
   catalogue-coordinator:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     image: catalogue-coordinator:latest
     container_name: catalogue-coordinator
     restart: unless-stopped

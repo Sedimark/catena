@@ -23,8 +23,10 @@ The coordinator consists of several key components organized in a clean, modular
 │   ├── __init__.py
 │   └── offerings_retrieval.py
 ├── config.py
-├── docker-compose.yml
-├── Dockerfile
+├── docker
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   └── start.sh
 ├── examples
 │   ├── catalogue_list.json
 │   └── example.env
@@ -32,7 +34,6 @@ The coordinator consists of several key components organized in a clean, modular
 ├── main.py
 ├── README.md
 ├── requirements.txt
-├── start.sh
 └── utils
     ├── __init__.py
     ├── dlt_comm
@@ -69,16 +70,19 @@ Create an `.env` file (use `./env/example.env` as a reference):
 
 1. **Start with Docker** (includes Redis):
    ```bash
+   cd docker
    bash start.sh
    ```
 
 2. **Stop services**:
    ```bash
+   cd docker
    docker-compose down
    ```
 
 3. **View logs**:
    ```bash
+   cd docker
    docker-compose logs -f
    ```
 

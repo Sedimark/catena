@@ -1,6 +1,6 @@
 # Loading environment variables (docker-compose env_file issue workaround)
 set -a
-source .env
+source ../.env
 set +a
 
 # Docker compose
