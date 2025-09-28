@@ -5,15 +5,13 @@ from flask import Flask, request, jsonify
 from utils.dlt_comm.get_nodes import get_node_list
 from config import REDIS_CONFIG
 
-# no need for a sparql engine. bruteforce the way to go haha
-
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
 
 async def fetch_sparql(session, node, query):
     node_url = f"{node['node_url']}/sparql"
     payload = {"query": query}
-    headers = {"Accept": "application/sparql-results+json"} # test this bit
+    headers = {"Accept": "application/sparql-results+json"}
 
     try:
         async with session.post(node_url, json=payload, headers=headers, timeout=10) as resp:
@@ -71,8 +69,3 @@ def query_vars(sparql_query):
         vars_str = match.group(2)
         return [v.strip().lstrip("?") for v in vars_str.split()]
     return []
-
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=3030) #TODO: Remember to change the hard coded port
-
-
