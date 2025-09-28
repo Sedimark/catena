@@ -2,6 +2,8 @@
 
 Catena is a distributed catalogue coordination system that retrieves offerings from DLT-Booth, distributes data across catalogue nodes using consistent hashing, and provides federated SPARQL querying capabilities.
 
+![Catena Block Diagram](https://i.ibb.co/Q3kyxKj7/Sedi-Mark-Entities.png)
+
 ## Architecture
 
 The coordinator consists of several key components organized in a clean, modular structure:
@@ -201,6 +203,7 @@ The coordinator has two modes, set using the variable `BASELINE_INFRA`
 
 ## TODO
 
+- **Federated Query Support**: Add support for all subqueries, not just `SELECT`
 - **Add `/profile` call step**: Add an additional call step to provider to fetch catalogue endpoints
 - **Clarify federated SPARQL query**: Clarify if consumers directly call GC
 - **Add tests**: Add test cases for all submodules
