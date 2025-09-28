@@ -55,8 +55,8 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     
     # Initial offering processing
     try:
-        from utils import get_offerings_meta_for_processing
-        offering_ids, offering_meta = get_offerings_meta_for_processing(redis_config)
+        from utils.dlt_comm.get_nodes import get_offerings_meta_for_processing
+        offering_ids, offering_meta = get_offerings_meta_for_processing()
 
         if len(offering_ids) != len(offering_meta):
             logger.error("Number of offerings IDs and offering meta data do not match")
@@ -89,7 +89,8 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
             time.sleep(OFFERING_FETCH_INTERVAL)
             
             try:
-                offering_ids, offering_meta = get_offerings_meta_for_processing(redis_config)
+                from utils.dlt_comm.get_nodes import get_offerings_meta_for_processing
+                offering_ids, offering_meta = get_offerings_meta_for_processing()
 
                 if len(offering_ids) != len(offering_meta):
                     logger.error("Number of offerings IDs and offering meta data do not match")

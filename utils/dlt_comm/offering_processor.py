@@ -16,6 +16,14 @@ class OfferingProcessor:
     def __init__(self, redis_config: Dict[str, Any]):
         self.redis_config = redis_config
         self.hash_ring = ConsistentHashRing(redis_config)
+        self.redis_client = redis.Redis(
+            host=redis_config['host'],
+            port=redis_config['port'],
+            db=redis_config['db'],
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5
+        )
     
     # Fetch and store offerings
     def process_offering(self, offering_id: str, offering_data: Dict[str, Any]) -> bool:
@@ -113,15 +121,8 @@ class OfferingProcessor:
         
         for attempt in range(max_retries):
             try:
-                import redis
-                redis_client = redis.Redis(
-                    host=self.redis_config['host'],
-                    port=self.redis_config['port'],
-                    db=self.redis_config['db'],
-                    decode_responses=True,
-                    socket_connect_timeout=5,
-                    socket_timeout=5
-                )
+                # Use the pre-initialized Redis client
+                redis_client = self.redis_client
                 
                 redis_client.ping()
                 
@@ -176,13 +177,7 @@ class OfferingProcessor:
             Dict with offering status and node assignment, or None if not found
         """
         try:
-            import redis
-            redis_client = redis.Redis(
-                host=self.redis_config['host'],
-                port=self.redis_config['port'],
-                db=self.redis_config['db'],
-                decode_responses=True
-            )
+            redis_client = self.redis_client
             
             node_id = redis_client.get(f"offering_node:{offering_id}")
             if not node_id:

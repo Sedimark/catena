@@ -1,118 +1,78 @@
+import asyncio
+import aiohttp
+import logging
 from flask import Flask, request, jsonify
-import os
-from utils import OfferingProcessor
+from utils.dlt_comm.get_nodes import get_node_list
+from config import REDIS_CONFIG
 
-# Create the Flask app as a variable so it can be imported elsewhere
+# no need for a sparql engine. bruteforce the way to go haha
+
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 
-def get_redis_config():
-    """Get Redis configuration from environment variables."""
-    return {
-        'host': os.getenv('REDIS_HOST', 'catalogue-coordinator-redis'),
-        'port': int(os.getenv('REDIS_PORT', 6379)),
-        'db': int(os.getenv('REDIS_DB', 0)),
-    }
+async def fetch_sparql(session, node, query):
+    node_url = f"{node['node_url']}/sparql"
+    payload = {"query": query}
+    headers = {"Accept": "application/sparql-results+json"} # test this bit
 
-def retrieve_offerings_by_id(offerings_id: str) -> dict:
-    """
-    Retrieve and process an offering by ID.
-    """
     try:
-        redis_config = get_redis_config()
-        offering_processor = OfferingProcessor(redis_config)
-        
-        # Get the offering status from Redis
-        status = offering_processor.get_offering_status(offerings_id)
-        
-        if status:
-            return {
-                "status": "success",
-                "message": f"Offering {offerings_id} found",
-                "offering_id": offerings_id,
-                "assigned_node": status['assigned_node'],
-                "offering_status": status['status']
-            }
-        else:
-            return {
-                "status": "error",
-                "message": f"Offering {offerings_id} not found or not yet processed",
-                "offering_id": offerings_id
-            }
-            
+        async with session.post(node_url, json=payload, headers=headers, timeout=10) as resp:
+            if resp.status != 200:
+                logger.warning(f"Node {node['owner']} returned status {resp.status}")
+                return []
+            result = await resp.json()
+            return result.get("results", {}).get("bindings", [])
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Error retrieving offering {offerings_id}: {str(e)}",
-            "offering_id": offerings_id
-        }
+        logger.warning(f"Failed to query node {node['owner']}: {e}")
+        return []
 
-@app.route('/offerings', methods=['POST'])
-def get_offerings():
+async def federated_query(nodes, query):
     """
-    Process an offering by ID.
+    Run the SPARQL query across all nodes asynchronously.
+    Returns combined bindings.
     """
+    results = []
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_sparql(session, node, query) for node in nodes]
+        responses = await asyncio.gather(*tasks)
+        for node_bindings in responses:
+            results.extend(node_bindings)
+    return results
+
+
+@app.route("/sparql", methods=["POST"])
+def federated_sparql():
     data = request.get_json()
-    offerings_id = data.get('offerings_id')
-    
-    if not offerings_id:
-        return jsonify({
-            "status": "error",
-            "message": "'offerings_id' is required."
-        }), 400
-    
-    result = retrieve_offerings_by_id(offerings_id)
-    return jsonify(result)
+    query = data.get("query")
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
 
-@app.route('/offerings/process', methods=['POST'])
-def process_offerings():
-    """
-    Process all available offerings from DLT.
-    """
-    try:
-        redis_config = get_redis_config()
-        offering_processor = OfferingProcessor(redis_config)
-        
-        # Get all offerings from DLT
-        from utils import get_offerings_meta_for_processing
-        offering_ids, offering_meta = get_offerings_meta_for_processing(redis_config)
-        
-        if not offering_meta:
-            return jsonify({
-                "status": "error",
-                "message": "No offerings found to process"
-            }), 404
-        
-        # Process all offerings
-        results = offering_processor.process_multiple_offerings(offering_meta)
-        
-        # Count successes and failures
-        success_count = sum(1 for success in results.values() if success)
-        failure_count = len(results) - success_count
-        
-        return jsonify({
-            "status": "success",
-            "message": f"Processed {len(results)} offerings",
-            "results": {
-                "total": len(results),
-                "successful": success_count,
-                "failed": failure_count,
-                "details": results
-            }
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Error processing offerings: {str(e)}"
-        }), 500
+    # Get node list
+    nodes = get_node_list(REDIS_CONFIG)
+    if not nodes:
+        return jsonify({"error": "No nodes available"}), 500
 
-@app.route('/offerings/status/<offering_id>', methods=['GET'])
-def get_offering_status(offering_id: str):
-    """
-    Get the current status of a specific offering.
-    """
-    result = retrieve_offerings_by_id(offering_id)
-    return jsonify(result)
+    # Run async queries
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    combined_bindings = loop.run_until_complete(federated_query(nodes, query))
+    loop.close()
 
-# Note: Do NOT run app.run() here. This file is meant to be imported and run from another file.
+    return jsonify({
+        "head": {"vars": query_vars(query)},
+        "results": {"bindings": combined_bindings}
+    })
+
+
+def query_vars(sparql_query):
+    import re
+    match = re.search(r"SELECT\s+(DISTINCT\s+)?(.*?)\s+WHERE", sparql_query, re.IGNORECASE | re.DOTALL)
+    if match:
+        vars_str = match.group(2)
+        return [v.strip().lstrip("?") for v in vars_str.split()]
+    return []
+
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=3030) #TODO: Remember to change the hard coded port
+
 

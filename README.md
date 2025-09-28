@@ -60,9 +60,85 @@ The coordinator consists of several key components organized in a clean, modular
 4. **Node Monitoring**: Continuous health checks detect node failures and trigger data redistribution
 5. **Federated Queries**: SPARQL queries are distributed across all active catalogue nodes
 
+## Environment Variables
+
+### Coordinator Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `SUBPROCESS_HEALTH_CHECK_INTERVAL` | Interval (seconds) for checking subprocess health. | `5` |
+| `WORKER_POOL_SIZE` | Number of worker threads/processes in the pool. | `10` |
+| `BASELINE_INFRA` | Coordinator mode toggle (0 = disabled, 1 = enabled). | `0` |
+
+### Flask API Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `HOST_ADDRESS` | Address for the Flask API to bind to. | `0.0.0.0` |
+| `HOST_PORT` | Port for the Flask API to listen on. | `5000` |
+
+### DLT Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `DLT_BASE_URL` | Base URL for DLT Booth API. | `http://dlt-booth:8085/api` |
+| `DLT_RUST_LOG` | Log level for DLT (`debug`, `info`, `error`). | `debug` |
+| `DLT_RUST_BACKTRACE` | Enable backtrace on errors (`0` = off, `1` = on). | `1` |
+| `DLT_HOST_ADDRESS` | DLT Booth HTTP server bind address. | `0.0.0.0` |
+| `DLT_HOST_PORT` | DLT Booth HTTP server port. | `8085` |
+| `DLT_NODE_URL` | DLT node endpoint URL. | `https://example.com/node` |
+| `DLT_FAUCET_API_ENDPOINT` | Faucet API endpoint. | `https://example.com/faucet/` |
+| `DLT_RPC_PROVIDER` | RPC provider endpoint. | `https://example.com/rpc` |
+| `DLT_CHAIN_ID` | Chain ID for the DLT network. | `1000` |
+| `DLT_ISSUER_URL` | Issuer service endpoint. | `https://example.com/issuer` |
+
+### Redis Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `REDIS_HOST` | Host address of Redis instance. | `catalogue-coordinator-redis` |
+| `REDIS_PORT` | Redis port. | `6379` |
+| `REDIS_DB` | Redis database index. | `0` |
+
+### Offering Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `OFFERING_DESC_TIMEOUT` | Timeout (seconds) for fetching offering description. | `60` |
+| `OFFERING_FETCH_INTERVAL` | Interval (seconds) between offering fetch cycles. | `60` |
+| `OFFERING_REPLICA_COUNT` | Number of replicas per offering. | `2` |
+
+### Node Monitoring Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `NODE_HEALTH_CHECK_INTERVAL` | Interval (seconds) for node health checks. | `30` |
+| `NODE_GRACE_PERIOD` | Grace period (seconds) before marking node unhealthy. | `60` |
+| `NODE_TIMEOUT` | Timeout (seconds) for node response. | `10` |
+
+### Hash Ring Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `HASH_RING_VIRTUAL_NODES` | Number of virtual nodes in the consistent hash ring. | `150` |
+
+### Key Storage Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `DLT_KEY_STORAGE_STRONGHOLD_SNAPSHOT_PATH` | Path to key storage snapshot file. | `./key_storage.stronghold` |
+| `DLT_KEY_STORAGE_STRONGHOLD_PASSWORD` | Password for encrypting the key storage snapshot. | `some_hopefully_secure_password` |
+| `DLT_KEY_STORAGE_MNEMONIC` | Mnemonic used to generate the key storage. | `your mnemonic here` |
+
+### Wallet Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `DLT_WALLET_STRONGHOLD_SNAPSHOT_PATH` | Path to wallet storage snapshot file. | `./wallet.stronghold` |
+| `DLT_WALLET_STRONGHOLD_PASSWORD` | Password for encrypting the wallet snapshot. | `some_hopefully_secure_password` |
+
+### Database Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `DLT_BOOTH_DB_USER` | Username for DLT Booth database connection. | `postgres` |
+| `DLT_BOOTH_DB_PASSWORD` | Password for DLT Booth database connection. | `dlt_booth` |
+
 ## Configuration
 
 Create an `.env` file (use `./env/example.env` as a reference):
+
+Alternatively, you can create a custom `.env` file with the help of the [enviroment variable descriptions](#environment-variables)
 
 ## Installation & Usage
 
@@ -120,8 +196,8 @@ python3 main.py
 ## Notes
 
 The coordinator has two modes, set using the variable `BASELINE_INFRA`
-- `BASEINE_INFRA: 0`: Enables the decentralised mode
-- `BASELINE_INFRA: 1`: Defaults to centralised mode and refers to catalogue nodes from `./catalogue_list.json` (example file under `./examples` directory)
+- `BASEINE_INFRA: 0`: Enables the decentralised mode where catalogue nodes are inferred and retrieved from the DLT offerings
+- `BASELINE_INFRA: 1`: Defaults to using known catalogues and refers to catalogue nodes from `./catalogue_list.json` (example file under `./examples` directory)
 
 ## TODO
 

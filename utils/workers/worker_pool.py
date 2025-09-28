@@ -4,6 +4,7 @@ import logging
 from typing import Dict, List, Any, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
+from utils.dlt_comm.offering_processor import OfferingProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,6 @@ class WorkerPool:
     def __init__(self, max_workers: int = None):
         self.max_workers = max_workers or int(os.getenv('WORKER_POOL_SIZE', 10))
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        self.task_queue = queue.Queue()
         self.results = {}
         self.is_running = False
         self.worker_threads = []
@@ -226,7 +226,6 @@ class WorkerPool:
         Returns:
             Task ID for tracking
         """
-        from utils import OfferingProcessor
         
         def process_single_offering(off_id: str, off_data: Dict[str, Any], redis_cfg: Dict[str, Any]) -> bool:
             """Worker function to process a single offering."""
@@ -239,7 +238,7 @@ class WorkerPool:
         
         return self.submit_task(process_single_offering, offering_id, offering_data, redis_config)
     
-    def submit_bulk_offering_processing(self, offerings: List[Dict[str, Any]], redis_config: Dict[str, Any]) -> List[str]:
+    def submit_bulk_offering_processing(self, offerings: List[List[Any]], redis_config: Dict[str, Any]) -> List[str]:
         """
         Submit multiple offering processing tasks to the worker pool.
         

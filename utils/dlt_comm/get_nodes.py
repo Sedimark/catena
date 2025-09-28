@@ -134,7 +134,7 @@ def get_node_list(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         logger.error(f"Error retrieving nodes: {e}")
         return []
 
-def get_offerings_meta_for_processing(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def get_offerings_meta_for_processing() -> List[Dict[str, Any]]:
     """
     Get all offerings from DLT for processing.
     This function retrieves the basic offering metadata that will be processed separately.

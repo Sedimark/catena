@@ -17,19 +17,20 @@ class ConsistentHashRing:
         self.virtual_nodes = virtual_nodes
         self.ring = {}
         self.sorted_keys = []
+        self.redis_client = redis.Redis(
+            host=redis_config['host'],
+            port=redis_config['port'],
+            db=redis_config['db'],
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5
+        )
         self._load_from_redis()
     
     def _load_from_redis(self):
         """Load hash ring state from Redis if available."""
         try:
-            redis_client = redis.Redis(
-                host=self.redis_config['host'],
-                port=self.redis_config['port'],
-                db=self.redis_config['db'],
-                decode_responses=True
-            )
-            
-            ring_data = redis_client.get('hash_ring')
+            ring_data = self.redis_client.get('hash_ring')
             if ring_data:
                 ring_state = json.loads(ring_data)
                 self.ring = ring_state.get('ring', {})
@@ -38,8 +39,8 @@ class ConsistentHashRing:
             else:
                 logger.info("No hash ring found in Redis, starting fresh")
             
-            node_ids = redis_client.smembers('all_nodes')
-            self.nodes = [redis_client.hgetall(f"node:{node_id}") for node_id in node_ids]
+            node_ids = self.redis_client.smembers('all_nodes')
+            self.nodes = [self.redis_client.hgetall(f"node:{node_id}") for node_id in node_ids]
 
         except Exception as e:
             logger.error(f"Error loading hash ring from Redis: {e}")
@@ -47,18 +48,11 @@ class ConsistentHashRing:
     def _save_to_redis(self):
         """Save hash ring state to Redis."""
         try:
-            redis_client = redis.Redis(
-                host=self.redis_config['host'],
-                port=self.redis_config['port'],
-                db=self.redis_config['db'],
-                decode_responses=True
-            )
-            
             ring_state = {
                 'ring': self.ring,
                 'sorted_keys': self.sorted_keys,
             }
-            redis_client.set('hash_ring', json.dumps(ring_state))
+            self.redis_client.set('hash_ring', json.dumps(ring_state))
         except Exception as e:
             logger.error(f"Error saving hash ring to Redis: {e}")
     
@@ -70,16 +64,9 @@ class ConsistentHashRing:
         """Add a node to the hash ring."""
         node_id = node['owner']
 
-        redis_client = redis.Redis(
-            host=self.redis_config['host'],
-            port=self.redis_config['port'],
-            db=self.redis_config['db'],
-            decode_responses=True
-        )
-
-        if not redis_client.exists(f"node:{node_id}"):
-            redis_client.hset(f"node:{node_id}", mapping=node)
-            redis_client.sadd("all_nodes", node_id)
+        if not self.redis_client.exists(f"node:{node_id}"):
+            self.redis_client.hset(f"node:{node_id}", mapping=node)
+            self.redis_client.sadd("all_nodes", node_id)
 
         if node_id not in [n['owner'] for n in self.nodes]:
             self.nodes.append(node)
@@ -112,15 +99,8 @@ class ConsistentHashRing:
             # Remove from nodes list
             self.nodes = [n for n in self.nodes if n['owner'] != node_id]
 
-            redis_client = redis.Redis(
-                host=self.redis_config['host'],
-                port=self.redis_config['port'],
-                db=self.redis_config['db'],
-                decode_responses=True
-            )
-
-            redis_client.srem("all_nodes", node_id)     # remove ID from index
-            redis_client.delete(f"node:{node_id}")
+            self.redis_client.srem("all_nodes", node_id)     # remove ID from index
+            self.redis_client.delete(f"node:{node_id}")
 
             self._save_to_redis()
             logger.info(f"Removed node {node_id} from hash ring")
@@ -213,7 +193,7 @@ class ConsistentHashRing:
                                 response = requests.post(
                                     f"{node['node_url']}/manager",
                                     json=offering,
-                                    headers={'Content-Type': 'application/json'}
+                                    headers={'Content-Type': 'application/ld+json'}
                                 )
                                 if response.status_code in [200, 201]:
                                     # Update Redis to reflect new assignment

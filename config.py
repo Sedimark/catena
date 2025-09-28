@@ -49,7 +49,7 @@ SUBPROCESS_HEALTH_CHECK_INTERVAL = int(os.getenv('SUBPROCESS_HEALTH_CHECK_INTERV
 
 # Flask API Configuration
 HOST_ADDRESS = os.getenv('HOST_ADDRESS', '0.0.0.0')
-HOST_PORT = int(os.getenv('HOST_PORT', 5000))
+HOST_PORT = int(os.getenv('HOST_PORT', 3030))
 
 # DLT Configuration
 DLT_BASE_URL = os.getenv('DLT_BASE_URL', 'http://dlt-booth:8085/api')
