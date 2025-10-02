@@ -5,7 +5,7 @@ from typing import Any, Dict
 import logging
 
 from api import app
-from config import load_config, HOST_ADDRESS, HOST_PORT, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL, SUBPROCESS_HEALTH_CHECK_INTERVAL
+from config import load_config, HOST_ADDRESS, HOST_PORT, NODE_GRACE_PERIOD, OFFERING_FETCH_INTERVAL, SUBPROCESS_HEALTH_CHECK_INTERVAL, OPERATOR_PROVIDED
 from utils.node_monitor.health_checker import NodeHealthChecker
 from utils.workers.worker_pool import WorkerPool
 
@@ -23,6 +23,8 @@ def node_list_setup():
         'db': int(os.getenv('REDIS_DB', 0)),
         'key': 'nodes',
     }
+    
+    app.config["REDIS_CONFIG"] = redis_config
     return redis_config
 
 
@@ -52,8 +54,19 @@ def setup_worker_pool(redis_config: Dict[str, Any]):
     worker_pool.start()
     
     processed_offerings_cache = set()
-    
-    # Initial offering processing
+
+    if OPERATOR_PROVIDED:
+        logger.info("Operator Provided infrastructure mode enabled: skipping DLT offering processing loop")
+        try:
+            while True:
+                time.sleep(OFFERING_FETCH_INTERVAL)
+                worker_pool.auto_cleanup(max_completed_tasks=50)
+        except KeyboardInterrupt:
+            logger.info("Stopping worker pool")
+            worker_pool.stop()
+        return
+
+    # Initial offering processing (decentralised mode only)
     try:
         from utils.dlt_comm.get_nodes import get_offerings_meta_for_processing
         offering_ids, offering_meta = get_offerings_meta_for_processing()

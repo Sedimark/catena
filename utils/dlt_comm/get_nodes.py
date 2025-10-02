@@ -1,9 +1,10 @@
+import os
 import redis
 import requests
 import logging
 import urllib.parse
 from typing import Dict, List, Any
-from config import DLT_BASE_URL, BASELINE_INFRA
+from config import DLT_BASE_URL, OPERATOR_PROVIDED, CENTRALISED
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,11 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
         discovered_nodes = []
         
         # Fetch offering metadata and parse descriptionURI for catalogue endpoints
-        if not BASELINE_INFRA:
+        if not OPERATOR_PROVIDED:
+
+            if CENTRALISED:
+                logger.error("OPERATOR PROVIDED and CENTALISED modes can't co-exist. Defaulting to Decentalised mode")
+
             for offering_id in offering_ids:
                 try:
                     offering_url = f"{DLT_BASE_URL}/offerings/{offering_id}"
@@ -74,14 +79,40 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                     logger.error(f"Error fetching and parsing catalogue endpoint information for offering {offering_id}: {e}")
                     continue
 
-        # Baseline Infrastructure Implementation
+        # Operator Provided Infrastructure Implementation
         else:
             import json
 
-            with open('catalogue_list.json', 'r') as f:
-                nodes_data = json.load(f)
+            # Load user-provided catalogue list from repo root or examples directory
+            path_candidates = ['catalogue_list.json']
+            nodes_data = None
+            for candidate in path_candidates:
+                try:
+                    with open(candidate, 'r') as f:
+                        nodes_data = json.load(f)
+                        logger.info(f"Loaded operator provided catalogue list from {candidate}")
+                        break
+                except Exception as e:
+                    logger.error(f"Error loading catalogue config: {e}")
+                    continue
 
-            node_info = {}
+            if nodes_data is None:
+                logger.warning("Operator provided mode enabled but no catalogue_list.json found; no nodes will be available")
+                nodes_data = {}
+
+            # Replace any previously discovered nodes with catalogue list
+            try:
+                existing_ids = list(redis_client.smembers('all_nodes'))
+                for node_id in existing_ids:
+                    redis_client.delete(f"node:{node_id}")
+                redis_client.delete('all_nodes')
+                redis_client.delete('hash_ring')
+            except Exception as e:
+                logger.error(f"Error clearing existing nodes for operator provided mode: {e}")
+
+            if CENTRALISED:
+                node_key = next(iter(nodes_data))
+                nodes_data = {node_key: nodes_data[node_key]}
 
             for node_name, node_data in nodes_data.items():
                 offering_owner = node_data['id']
@@ -92,11 +123,11 @@ def discover_and_store_nodes(redis_config: Dict[str, Any]) -> List[Dict[str, Any
                     'name': node_name,
                     'status': 'healthy'
                 }
-            
+
                 discovered_nodes.append(node_info)
-                            
+
                 redis_client.hset(f"node:{offering_owner}", mapping=node_info)
-                redis_client.sadd('all_nodes', offering_owner) 
+                redis_client.sadd('all_nodes', offering_owner)
         
         # Ensure all_nodes is of type SET
         if redis_client.exists("all_nodes") and redis_client.type("all_nodes") != "set":
@@ -120,6 +151,12 @@ def get_node_list(redis_config: Dict[str, Any]) -> List[Dict[str, Any]]:
     )
     
     try:
+        # In Operator Provided  mode, always reload from catalogue_list.json to avoid stale offering-derived nodes
+        operator_provided = int(os.getenv('OPERATOR_PROVIDED', OPERATOR_PROVIDED))
+        if operator_provided:
+            logger.info("Operator Provided mode active: reloading nodes from catalogue_list.json")
+            return discover_and_store_nodes(redis_config)
+
         nodes_data = redis_client.smembers('all_nodes')
         if nodes_data:
             all_nodes = []

@@ -4,6 +4,7 @@ import redis
 import logging
 from typing import Dict, List, Any, Optional
 import requests
+from config import HASH_RING_VIRTUAL_NODES
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ class ConsistentHashRing:
     Consistent hashing ring implementation with virtual nodes for better distribution.
     """
     
-    def __init__(self, redis_config: Dict[str, Any], virtual_nodes: int = 150):
+    def __init__(self, redis_config: Dict[str, Any], virtual_nodes: int = HASH_RING_VIRTUAL_NODES):
         self.redis_config = redis_config
         self.virtual_nodes = virtual_nodes
         self.ring = {}
