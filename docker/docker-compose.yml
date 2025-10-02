@@ -63,7 +63,7 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      postgres-dev:
+      postgres:
        condition: service_healthy 
 
     
@@ -81,3 +81,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    
+  global-catalogue:
+    image: ghcr.io/sedimark/catalogue-server:latest
+    container_name: global-catalogue
+    volumes:
+      - /srv/pipelines/dev/vols/catalogue:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c \"curl -f http://global-catalogue:3030/catalogue/health || exit 1\""] 
+      interval: 60s
+      timeout: 5s
+      retries: 5
+    environment:
+      STORAGE_TYPE: tdb

@@ -44,6 +44,9 @@ def validate_config():
     if warnings:
         logger.warning(f"Found {len(warnings)} configuration warnings")
 
+# Ensure environment variables from .env are loaded before reading them into constants
+load_config()
+
 # Coordinator Configuration
 SUBPROCESS_HEALTH_CHECK_INTERVAL = int(os.getenv('SUBPROCESS_HEALTH_CHECK_INTERVAL', 5))
 
@@ -75,8 +78,13 @@ NODE_TIMEOUT = int(os.getenv('NODE_TIMEOUT', 10))
 # Hash Ring Configuration
 HASH_RING_VIRTUAL_NODES = int(os.getenv('HASH_RING_VIRTUAL_NODES', 150))
 
-# Baseline Infrastructure Configuration
-BASELINE_INFRA = int(os.getenv('BASELINE_INFRA', 0))
+# Operator Provided and Centralised Configuration
+OPERATOR_PROVIDED = int(os.getenv('OPERATOR_PROVIDED', 0))
+CENTRALISED = int(os.getenv('CENTRALISED', 0))
+
+# Global Catalogue Configuration
+GC_URL= os.getenv('GC_URL', 'http://global-catalogue')
+GC_PORT= int(os.getenv('GC_PORT', 3030))
 
 # Validate configuration on import
 validate_config()
