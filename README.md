@@ -69,13 +69,19 @@ The coordinator consists of several key components organized in a clean, modular
 |----------|-------------|-------------------|
 | `SUBPROCESS_HEALTH_CHECK_INTERVAL` | Interval (seconds) for checking subprocess health. | `5` |
 | `WORKER_POOL_SIZE` | Number of worker threads/processes in the pool. | `10` |
-| `BASELINE_INFRA` | Coordinator mode toggle (0 = disabled, 1 = enabled). | `0` |
+| `OPERATOR_PROVIDED` | Coordinator mode toggle (0 = disabled, 1 = enabled). | `0` |
 
 ### Flask API Configuration
 | Variable | Description | Default / Example |
 |----------|-------------|-------------------|
 | `HOST_ADDRESS` | Address for the Flask API to bind to. | `0.0.0.0` |
-| `HOST_PORT` | Port for the Flask API to listen on. | `5000` |
+| `HOST_PORT` | Port for the Flask API to listen on. | `3030` |
+
+### Global Catalogue Configuration
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `GC_URL` | Base URL for the Global Catalogue | `http://global-catalogue` |
+| `GC_PORT` | Port for the Global Catalogue | `3030` |
 
 ### DLT Configuration
 | Variable | Description | Default / Example |
@@ -197,9 +203,11 @@ python3 main.py
 
 ## Notes
 
-The coordinator has two modes, set using the variable `BASELINE_INFRA`
-- `BASEINE_INFRA: 0`: Enables the decentralised mode where catalogue nodes are inferred and retrieved from the DLT offerings
-- `BASELINE_INFRA: 1`: Defaults to using known catalogues and refers to catalogue nodes from `./catalogue_list.json` (example file under `./examples` directory)
+The coordinator has two modes, set using the variable `OPERATOR_PROVIDED` and `CENTRALISED`
+- `OPERATOR_PROVIDED: 0`: Enables automatic node retrieval mode where catalogue nodes are inferred and retrieved from the DLT offerings
+- `OPERATOR_PROVIDED: 1`: Defaults to using known catalogues and refers to catalogue nodes from `./catalogue_list.json` (example file under `./examples` directory)
+- `CENTRALISED: 0`: Enables decentralised mode for offerings to be spread across multiple nodes
+- `CENTRALISED: 1`: Uses Global Catalogue to store all offering descriptions
 
 ## TODO
 
